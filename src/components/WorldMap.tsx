@@ -96,12 +96,13 @@ function getDefaultLocation() {
 }
 
 // 创建弹窗内容
-function createPopupContent(city: TimezoneCity): string {
+function createPopupContent(city: TimezoneCity, isMobile: boolean): string {
   const info = formatTime(city.timezone);
   const labelClass = info.dayLabel ? (info.dayLabel.includes("明") || info.dayLabel.includes("+") ? "tomorrow" : "yesterday") : "";
   
   return `
     <div class="popup-content">
+      ${isMobile ? '<button class="popup-close" onclick="this.closest(\'.maplibregl-popup\').remove()">✕</button>' : ""}
       <div class="popup-header">
         <div class="status-dot ${info.isDay ? "day" : "night"}"></div>
         <div class="city-info">
@@ -173,7 +174,8 @@ export default function WorldMap() {
     // 显示弹窗
     const markerData = markersRef.current.find(m => m.city.id === city.id);
     if (markerData) {
-      markerData.popup.setHTML(createPopupContent(city)).setLngLat([city.lng, city.lat]).addTo(map.current);
+      const isMobile = window.innerWidth < 768;
+      markerData.popup.setHTML(createPopupContent(city, isMobile)).setLngLat([city.lng, city.lat]).addTo(map.current);
     }
   }, []);
 
@@ -230,10 +232,40 @@ export default function WorldMap() {
         const popup = new maplibregl.Popup({ offset: 15, closeButton: false, className: "city-popup" });
         const marker = new maplibregl.Marker({ element: el }).setLngLat([city.lng, city.lat]).addTo(m);
 
+        let isPopupOpen = false;
+
+        // 桌面端：悬停显示
         el.addEventListener("mouseenter", () => {
-          popup.setHTML(createPopupContent(city)).setLngLat([city.lng, city.lat]).addTo(m);
+          if (!isPopupOpen) {
+            const isMobile = window.innerWidth < 768;
+            popup.setHTML(createPopupContent(city, isMobile)).setLngLat([city.lng, city.lat]).addTo(m);
+          }
         });
-        el.addEventListener("mouseleave", () => popup.remove());
+        el.addEventListener("mouseleave", () => {
+          if (!isPopupOpen) {
+            popup.remove();
+          }
+        });
+
+        // 移动端：点击切换
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (isPopupOpen) {
+            popup.remove();
+            isPopupOpen = false;
+          } else {
+            // 关闭其他弹窗
+            markersRef.current.forEach(({ popup: p }) => p.remove());
+            const isMobile = window.innerWidth < 768;
+            popup.setHTML(createPopupContent(city, isMobile)).setLngLat([city.lng, city.lat]).addTo(m);
+            isPopupOpen = true;
+          }
+        });
+
+        // 弹窗关闭时重置状态
+        popup.on("close", () => {
+          isPopupOpen = false;
+        });
 
         markersRef.current.push({ marker, popup, city, element: el });
       });
@@ -247,6 +279,11 @@ export default function WorldMap() {
           m.flyTo({ center: [defaultLoc.lng, defaultLoc.lat], zoom: defaultLoc.zoom, duration: 2000 });
         }, 500);
       }
+    });
+
+    // 点击地图关闭所有弹窗
+    m.on("click", () => {
+      markersRef.current.forEach(({ popup }) => popup.remove());
     });
 
     // 事件监听
