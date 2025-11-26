@@ -65,18 +65,8 @@ function formatTimeForOffset(lng: number) {
 }
 
 
-function getDefaultLocation() {
-  // 尝试从 localStorage 恢复
-  if (typeof window !== "undefined") {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const { center, zoom } = JSON.parse(saved);
-        if (center && zoom) return { lat: center[1], lng: center[0], zoom };
-      }
-    } catch {}
-  }
-  
+// 根据用户语言获取默认地区
+function getUserRegionLocation() {
   if (typeof navigator === "undefined") return { lat: 25, lng: 0, zoom: 1.5 };
   
   const lang = navigator.language.toLowerCase();
@@ -93,6 +83,21 @@ function getDefaultLocation() {
   };
   
   return locationMap[lang] || locationMap[lang.split("-")[0]] || { lat: 25, lng: 0, zoom: 1.5 };
+}
+
+function getDefaultLocation() {
+  // 尝试从 localStorage 恢复
+  if (typeof window !== "undefined") {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const { center, zoom } = JSON.parse(saved);
+        if (center && zoom) return { lat: center[1], lng: center[0], zoom };
+      }
+    } catch {}
+  }
+  
+  return getUserRegionLocation();
 }
 
 // 创建弹窗内容
@@ -137,6 +142,7 @@ export default function WorldMap() {
   const map = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<MarkerData[]>([]);
   const updateIntervalRef = useRef<number | null>(null);
+  const mouseLngRef = useRef<{ lng: number; lat: number } | null>(null);
   
   const [mounted, setMounted] = useState(false);
   const [mouseInfo, setMouseInfo] = useState<{ lat: number; lng: number; time: string; date: string; offset: string; dayLabel: string } | null>(null);
@@ -144,26 +150,47 @@ export default function WorldMap() {
 
   useEffect(() => { setMounted(true); }, []);
 
-  // 统一更新所有标记（性能优化：单个定时器）
+  // 统一更新所有标记和弹窗（性能优化：单个定时器）
   const updateAllMarkers = useCallback(() => {
-    markersRef.current.forEach(({ element, city }) => {
+    const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+    
+    markersRef.current.forEach(({ element, city, popup }) => {
       const info = formatTime(city.timezone);
-      const innerColor = info.isDay ? "#f59e0b" : "#6366f1";
-      let ringClass = "";
-      let showRing = false;
+      const innerColor = info.isDay ? "#fbbf24" : "#818cf8";
+      const ringClass = info.dayLabel 
+        ? (info.dayLabel.includes("明") || info.dayLabel.includes("+") ? "tomorrow" : "yesterday")
+        : "";
       
-      if (info.dayLabel) {
-        showRing = true;
-        ringClass = info.dayLabel.includes("明") || info.dayLabel.includes("+") ? "tomorrow" : "yesterday";
+      // 更新标记（仅在状态变化时）
+      const currentClass = element.dataset.ringClass || "";
+      const currentDay = element.dataset.isDay || "";
+      const newDay = info.isDay ? "1" : "0";
+      
+      if (currentClass !== ringClass || currentDay !== newDay) {
+        element.dataset.ringClass = ringClass;
+        element.dataset.isDay = newDay;
+        element.innerHTML = `
+          <div class="marker-wrapper ${ringClass}">
+            ${ringClass ? `<div class="marker-ring"></div>` : ""}
+            <div class="marker-dot" style="background: ${innerColor}; box-shadow: 0 0 12px ${innerColor};"></div>
+          </div>
+        `;
       }
       
-      element.innerHTML = `
-        <div class="marker-wrapper ${ringClass}">
-          ${showRing ? `<div class="marker-ring"></div>` : ""}
-          <div class="marker-dot" style="background: ${innerColor}; box-shadow: 0 0 10px ${innerColor};"></div>
-        </div>
-      `;
+      // 更新打开的弹窗时间
+      if (popup.isOpen()) {
+        const timeEl = popup.getElement()?.querySelector(".time-display .time");
+        if (timeEl) {
+          timeEl.textContent = info.time;
+        }
+      }
     });
+    
+    // 更新鼠标位置时间面板
+    if (mouseLngRef.current) {
+      const { lng, lat } = mouseLngRef.current;
+      setMouseInfo({ lat, lng, ...formatTimeForOffset(lng) });
+    }
   }, []);
 
   // 飞到指定城市
@@ -289,9 +316,13 @@ export default function WorldMap() {
     // 事件监听
     m.on("mousemove", (e) => {
       const { lng, lat } = e.lngLat;
+      mouseLngRef.current = { lng, lat };
       setMouseInfo({ lat, lng, ...formatTimeForOffset(lng) });
     });
-    m.on("mouseout", () => setMouseInfo(null));
+    m.on("mouseout", () => {
+      mouseLngRef.current = null;
+      setMouseInfo(null);
+    });
     m.on("zoomend", () => {
       setZoom(m.getZoom());
       saveMapState();
@@ -303,7 +334,12 @@ export default function WorldMap() {
       if (e.target instanceof HTMLInputElement) return;
       if (e.key === "=" || e.key === "+") m.zoomIn();
       else if (e.key === "-") m.zoomOut();
-      else if (e.key === "0") m.flyTo({ center: [0, 25], zoom: 1.5, duration: 1000 });
+      else if (e.key === "0") {
+        // 重置：清除 localStorage 并飞到用户当前地区
+        try { localStorage.removeItem(STORAGE_KEY); } catch {}
+        const userLoc = getUserRegionLocation();
+        m.flyTo({ center: [userLoc.lng, userLoc.lat], zoom: userLoc.zoom, duration: 2000 });
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
 
@@ -398,8 +434,9 @@ export default function WorldMap() {
 
       {/* 快捷键提示 */}
       <div className="shortcuts-hint">
-        <span>+/- 缩放</span>
-        <span>0 重置</span>
+        <span><kbd>+</kbd><kbd>-</kbd> 缩放</span>
+        <span><kbd>0</kbd> 重置</span>
+        <span><kbd>Ctrl</kbd><kbd>K</kbd> 搜索</span>
       </div>
     </div>
   );

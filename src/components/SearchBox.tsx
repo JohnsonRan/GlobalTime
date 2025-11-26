@@ -57,21 +57,22 @@ export default function SearchBox({ onSelect }: SearchBoxProps) {
   return (
     <div className="search-box">
       <div className="search-input-wrapper">
-        <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="11" cy="11" r="8" />
-          <path d="m21 21-4.35-4.35" />
-        </svg>
         <input
           ref={inputRef}
           type="text"
           className="search-input"
-          placeholder="搜索城市... (Ctrl+K)"
+          placeholder="搜索城市..."
           value={query}
           onChange={e => setQuery(e.target.value)}
           onFocus={() => setIsOpen(true)}
           onBlur={() => setTimeout(() => setIsOpen(false), 200)}
           onKeyDown={handleKeyDown}
         />
+        <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.35-4.35" />
+        </svg>
+        <span className="search-shortcut">⌘K</span>
       </div>
       
       {isOpen && results.length > 0 && (
