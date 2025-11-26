@@ -236,6 +236,47 @@ export default function WorldMap() {
     const m = map.current;
 
     m.on("load", () => {
+      // 根据用户语言设置地图标签语言
+      const fullLang = navigator.language.toLowerCase();
+      const baseLang = fullLang.split("-")[0];
+      
+      // 获取语言字段，区分简繁体中文
+      const getLabelField = (): string => {
+        if (fullLang === "zh-tw" || fullLang === "zh-hk" || fullLang === "zh-hant") {
+          return "name:zh-Hant"; // 繁体中文
+        }
+        if (baseLang === "zh") {
+          return "name:zh-Hans"; // 简体中文
+        }
+        const langMap: Record<string, string> = {
+          ja: "name:ja",
+          ko: "name:ko",
+          en: "name:en",
+          de: "name:de",
+          fr: "name:fr",
+          es: "name:es",
+          pt: "name:pt",
+          ru: "name:ru",
+          ar: "name:ar",
+        };
+        return langMap[baseLang] || "name:en";
+      };
+      
+      const labelField = getLabelField();
+      
+      // 更新所有文字图层的语言
+      m.getStyle().layers.forEach((layer) => {
+        if (layer.type === "symbol" && layer.layout?.["text-field"]) {
+          m.setLayoutProperty(layer.id, "text-field", [
+            "coalesce",
+            ["get", labelField],
+            ["get", "name:zh"], // 回退到通用中文
+            ["get", "name:en"],
+            ["get", "name"]
+          ]);
+        }
+      });
+      
       // 时区线
       const timezoneLines: GeoJSON.Feature[] = [];
       for (let lng = -180; lng <= 180; lng += 15) {
