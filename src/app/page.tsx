@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { getNow } from "@/utils/timeSync";
 
 const WorldMap = dynamic(() => import("@/components/WorldMap"), {
   ssr: false,
@@ -19,7 +20,7 @@ export default function Home() {
 
   useEffect(() => {
     const update = () => {
-      const now = new Date();
+      const now = getNow(); // 使用 NTP 校准后的时间
       setLocalTime(now.toLocaleTimeString("zh-CN", {
         hour: "2-digit",
         minute: "2-digit",

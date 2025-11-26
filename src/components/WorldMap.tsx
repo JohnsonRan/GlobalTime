@@ -5,6 +5,7 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { timezoneCities, TimezoneCity } from "@/data/timezones";
 import SearchBox from "./SearchBox";
+import { syncTime, getNow } from "@/utils/timeSync";
 
 // 存储键
 const STORAGE_KEY = "world-timezone-state";
@@ -24,7 +25,7 @@ function getRelativeDayLabel(targetDate: Date): string {
 
 // 格式化时间信息
 function formatTime(timezone: string) {
-  const now = new Date();
+  const now = getNow(); // 使用 NTP 校准后的时间
   const tzDate = new Date(now.toLocaleString("en-US", { timeZone: timezone }));
   
   const time = new Intl.DateTimeFormat("zh-CN", {
@@ -52,7 +53,7 @@ function formatTime(timezone: string) {
 
 function formatTimeForOffset(lng: number) {
   const offsetHours = Math.round(lng / 15);
-  const now = new Date();
+  const now = getNow(); // 使用 NTP 校准后的时间
   const utc = now.getTime() + now.getTimezoneOffset() * 60000;
   const localTime = new Date(utc + offsetHours * 3600000);
   
@@ -148,7 +149,11 @@ export default function WorldMap() {
   const [mouseInfo, setMouseInfo] = useState<{ lat: number; lng: number; time: string; date: string; offset: string; dayLabel: string } | null>(null);
   const [zoom, setZoom] = useState(1.5);
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => { 
+    setMounted(true);
+    // 页面加载时同步 NTP 时间
+    syncTime();
+  }, []);
 
   // 更新时区标签位置和时间
   const updateTimezoneLabels = useCallback(() => {
